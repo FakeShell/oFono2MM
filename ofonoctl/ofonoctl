@@ -46,71 +46,96 @@ def action_list():
     global manager, bus
     modems = manager.GetModems()
 
-    result = []
-
     if len(modems) == 0:
         print("No modems found")
         return
 
+    modem_info = []
+    context_info = []
+
     for path, properties in modems:
         model = path[1:]
-        powered = False
-        online = False
-        if 'Powered' in properties:
-            powered = properties['Powered'] == 1
+        powered = properties.get('Powered', False)
+        online = properties.get('Online', False)
 
-        if 'Online' in properties:
-            online = properties['Online'] == 1
+        if not powered:
+            modem_info.append([model, "Unpowered", "N/A", "N/A"])
+            continue
+
+        if not online:
+            modem_info.append([model, "Offline", "N/A", "N/A"])
+            continue
 
         try:
             registration_interface = dbus.Interface(bus.get_object('org.ofono', path), 'org.ofono.NetworkRegistration')
             properties = registration_interface.GetProperties()
             status = str(properties["Status"])
             network_name = str(properties["Name"])
-            if status == "searching":
-                registration = "Searching"
-            elif status == "denied":
-                registration = "Denied"
-            elif status == "registered":
+            if status == "registered":
                 strength = float(properties["Strength"])
-                registration = "Registered to {} ({}%)".format(network_name, strength)
+                registration = f"Registered to {network_name} ({strength}%)"
             else:
-                registration = "{}, {}".format(status, network_name)
+                registration = f"{status.capitalize()}"
         except dbus.exceptions.DBusException:
             registration = "Unregistered"
+            network_name = "Unknown"
 
         try:
             sim_manager = dbus.Interface(bus.get_object('org.ofono', path), 'org.ofono.SimManager')
             properties = sim_manager.GetProperties()
-            if properties['Present'] == 1:
-                if 'ServiceProviderName' in properties:
-                    sim = properties['ServiceProviderName']
-                else:
-                    try:
-                        network_registration = dbus.Interface(bus.get_object('org.ofono', path), 'org.ofono.NetworkRegistration')
-                        network_registration_props = network_registration.GetProperties()
-                        if 'Name' in network_registration_props:
-                            sim = network_registration_props['Name']
-                        else:
-                            sim = 'Unknown'
-                    except Exception:
-                        sim = 'Unknown'
+            if properties['Present']:
+                sim = properties.get('ServiceProviderName', '')
+                if not sim:
+                    sim = network_name
             else:
                 sim = "No SIM"
         except dbus.exceptions.DBusException:
-            sim = "Unknown"
+            sim = network_name
 
-        if not powered:
-            result.append([model, "Unpowered", sim])
-            continue
+        try:
+            ims = dbus.Interface(bus.get_object('org.ofono', path), 'org.ofono.IpMultimediaSystem')
+            ims_properties = ims.GetProperties()
+            ims_status = "Registered" if ims_properties.get('Registered', False) else "Not Registered"
+            voice_capable = "V" if ims_properties.get('VoiceCapable', False) else "-"
+            sms_capable = "S" if ims_properties.get('SmsCapable', False) else "-"
+            ims_info = f"{ims_status} ({voice_capable}{sms_capable})"
+        except dbus.exceptions.DBusException:
+            ims_info = "Unknown"
 
-        if not online:
-            result.append([model, "Offline", sim])
-            continue
+        modem_info.append([model, registration, sim, ims_info])
 
-        result.append([model, registration, sim])
+        try:
+            connection_manager = dbus.Interface(bus.get_object('org.ofono', path), 'org.ofono.ConnectionManager')
+            contexts = connection_manager.GetContexts()
+            for context in contexts:
+                context_path = context[0]
+                apn = context[1].get('AccessPointName', 'N/A')
+                settings = context[1].get('Settings', {})
+                interface = settings.get('Interface', 'N/A')
+                method = settings.get('Method', 'N/A')
+                address = settings.get('Address', 'N/A')
+                gateway = settings.get('Gateway', 'N/A')
+                dns = ', '.join(settings.get('DomainNameServers', []))
+                context_info.append([model, context_path, apn, interface, method, address, gateway, dns])
+        except dbus.exceptions.DBusException:
+            context_info.append([model, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"])
 
-    print(tabulate.tabulate(result, headers=["Modem", "Status", "SIM"]))
+    modem_table = tabulate.tabulate(
+        modem_info,
+        headers=["Modem", "Status", "SIM", "IMS Status (VS)"],
+        tablefmt="grid"
+    )
+
+    context_table = tabulate.tabulate(
+        context_info,
+        headers=["Modem", "Context Path", "APN", "Interface", "Method", "Address", "Gateway", "DNS"],
+        tablefmt="grid"
+    )
+
+    print("Modem Information:")
+    print(modem_table)
+    print("\nContext Information:")
+    print(context_table)
 
 def action_power(component, state, command):
     message = {
