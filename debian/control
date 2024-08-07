@@ -20,7 +20,8 @@ Depends: ${misc:Depends},
 	 gir1.2-geoclue-2.0,
          gir1.2-modemmanager-1.0,
          python3-networkmanager,
-         python3-dbus
+         python3-dbus,
+         python3-lxc,
 Description: A python daemon implementing ModemManager DBus API and using ofono to manage the modem
 
 Package: ofonoctl
