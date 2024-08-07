@@ -22,11 +22,16 @@ from ofono2mm.logging import ofono2mm_print
 from ofono2mm.utils import read_setting, save_setting
 from ofono2mm.ofono import Ofono, DBus
 
-import asyncio
+from fcntl import fcntl, F_GETFL, F_SETFL
+from os import O_NONBLOCK, write, read
+from select import select
+from os.path import exists
 from glob import glob
 from time import time, sleep
 from re import split
 from ast import literal_eval
+import asyncio
+import lxc
 
 bearer_i = 0
 
@@ -1016,42 +1021,65 @@ class MMModemInterface(ServiceInterface):
     @method()
     async def Command(self, cmd: 's', timeout: 'u') -> 's':
         ofono2mm_print(f"Running command {cmd} with timeout {timeout}", self.verbose)
+        CONTAINER_NAME = "android"
 
-        if cmd == '':
+        if cmd == '' or cmd[:2] != "AT":
             return ''
 
-        if cmd[:2] != "AT":
-            return ''
+        init_pid = 0
+        container = lxc.Container(CONTAINER_NAME)
+        if container.defined and container.running:
+            init_pid = container.init_pid
 
-        smd_devices = glob('/dev/smd*')
-
-        smd_devices.sort(key=lambda s: [int(text) if text.isdigit() else text.lower() for text in split('([0-9]+)', s)])
+        smd_devices = glob('/dev/smd*') # qualcomm
         if smd_devices:
+            smd_devices.sort(key=lambda s: [int(text) if text.isdigit() else text.lower() for text in split('([0-9]+)', s)])
             device_path = smd_devices[0]
+        elif exists(f"/proc/{init_pid}/root/dev/ccci_rpc"): # mediatek
+            device_path = f"/proc/{init_pid}/root/dev/pts/28"
         else:
             return ''
 
         data_to_write = f"{cmd}\r"
 
-        with open(device_path, 'w') as device_file:
-            device_file.write(data_to_write)
+        try:
+            with open(device_path, 'r+b', buffering=0) as device_file:
+                fd = device_file.fileno()
+                flags = fcntl(fd, F_GETFL)
+                fcntl(fd, F_SETFL, flags | O_NONBLOCK)
 
-        with open(device_path, 'r') as device_file:
-            start_time = time()
-            received_data = ""
-            while True:
-                line = device_file.readline()
-                if line:
-                    if time() - start_time > 5:
+                write(fd, data_to_write.encode())
+
+                received_data = ""
+                start_time = time()
+                last_output_time = start_time
+
+                while True:
+                    ready, _, _ = select([fd], [], [], 0.1)
+                    current_time = time()
+
+                    if ready:
+                        try:
+                            chunk = read(fd, 1024).decode()
+                            if chunk:
+                                received_data += chunk
+                                last_output_time = current_time
+
+                                if "OK" in received_data or "ERROR" in received_data or "+" in received_data:
+                                    break
+                        except BlockingIOError:
+                            pass
+
+                    if current_time - last_output_time > 1: # return if we get no output after some time
+                        break
+
+                    if current_time - start_time > timeout:
+                        ofono2mm_print(f"Command timed out after {timeout} seconds", self.verbose)
                         return ''
 
-                    received_data += line
-                    if "OK" in received_data:
-                        break
-                    if "ERROR" in received_data:
-                        break
-
-                sleep(0.1)
+        except Exception as e:
+            ofono2mm_print(f"Error occurred: {str(e)}", self.verbose)
+            return ''
 
         data = received_data.strip()
         data_print = data.replace('\n', ' ')
