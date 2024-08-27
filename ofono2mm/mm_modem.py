@@ -191,10 +191,8 @@ class MMModemInterface(ServiceInterface):
             self.mm_sim_interface.set_props()
         if self.mm_modem_messaging_interface and iface == "org.ofono.MessageManager":
             self.mm_modem_messaging_interface.set_props()
-            self.mm_modem_messaging_interface.init_messages()
         if self.mm_modem_voice_interface and iface == "org.ofono.VoiceCallManager":
             self.mm_modem_voice_interface.set_props()
-            self.mm_modem_voice_interface.init_calls()
         if self.mm_modem_simple_interface:
             self.mm_modem_simple_interface.set_props()
         if self.mm_modem_signal_interface and iface == "org.ofono.NetworkMonitor":
