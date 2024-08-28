@@ -191,7 +191,7 @@ def action_scan_operators():
 
     print(tabulate.tabulate(result, headers=['Operator', 'Status', 'Technology', 'MCC']))
 
-def action_wan(connect=False, resolv=False):
+def action_wan(connect=False, disconnect=False, resolv=False, context_number=None):
     init()
     global manager, bus
     modems = manager.GetModems()
@@ -200,19 +200,15 @@ def action_wan(connect=False, resolv=False):
         sys.exit(1)
     modem = modems[0][0]
 
-    if 'Powered' in modems[0][1]:
-        powered = modems[0][1]['Powered'] == 1
-        if not powered:
-            print("The modem is not powered, can't control WAN settings")
-            print("You can power on the modem using ofonoctl poweron")
-            sys.exit(1)
+    if 'Powered' in modems[0][1] and not modems[0][1]['Powered']:
+        print("The modem is not powered, can't control WAN settings")
+        print("You can power on the modem using ofonoctl poweron")
+        sys.exit(1)
 
-    if 'Online' in modems[0][1]:
-        online = modems[0][1]['Online'] == 1
-        if not online:
-            print("The modem is offline, can't control WAN settings")
-            print("You can bring the modem online using ofonoctl online")
-            sys.exit(1)
+    if 'Online' in modems[0][1] and not modems[0][1]['Online']:
+        print("The modem is offline, can't control WAN settings")
+        print("You can bring the modem online using ofonoctl online")
+        sys.exit(1)
 
     connman = dbus.Interface(bus.get_object('org.ofono', modem), 'org.ofono.ConnectionManager')
     try:
@@ -221,107 +217,155 @@ def action_wan(connect=False, resolv=False):
         print("Could not fetch contexts on the modem")
         sys.exit(1)
 
-    has_flushed = False
+    if (connect or disconnect) and context_number is None:
+        context_number = 1  # Default to context 1 for connect/disconnect if not specified
+
+    if context_number is not None:
+        if context_number < 1 or context_number > len(contexts):
+            print(f"Invalid context number. Available contexts: 1 to {len(contexts)}")
+            sys.exit(1)
+        context_to_modify = contexts[context_number - 1]
+    else:
+        context_to_modify = None
 
     result = []
-    for properties in contexts:
-        settings4 = properties['Settings']
-        settings6 = properties['IPv6.Settings']
-        dns_servers = []
-        if "Method" in settings4:
-            s = settings4
+    has_flushed = False
+    dns_servers = []
 
-            if connect and not has_flushed:
-                cmd = ['ip', 'addr', 'flush', 'dev', s['Interface']]
+    def process_settings(settings, ip_version):
+        nonlocal has_flushed, result, dns_servers
+        if isinstance(settings, dbus.Dictionary) and ("Method" in settings or "Address" in settings):
+            s = dict(settings)
+            interface = s.get('Interface')
+
+            if connect and not has_flushed and interface:
+                cmd = ['ip', 'addr', 'flush', 'dev', interface]
                 try:
                     subprocess.check_output(cmd)
                     has_flushed = True
                 except subprocess.CalledProcessError as e:
                     print(f"Failed to flush: {e}")
-                    sys.exit(1)
+                    return
 
-            address = s["Address"] if s["Method"] == "static" else ""
-            gateway = s["Gateway"] if s["Method"] == "static" else ""
-            dns = ", ".join(s["DomainNameServers"]) if s["Method"] == "static" else ""
-            if len(address) > 0:
-                address += "/" + str(ipaddress.IPv4Network('0.0.0.0/{}'.format(s["Netmask"])).prefixlen)
-            result.append([s["Interface"], "ipv4", properties["AccessPointName"], s["Method"], address, gateway, dns])
-            dns4_servers = s["DomainNameServers"]
+            if ip_version == "ipv4":
+                method = s.get("Method", "")
+                address = s.get("Address", "") if method == "static" else ""
+                gateway = s.get("Gateway", "") if method == "static" else ""
+                dns = ", ".join(s.get("DomainNameServers", [])) if method == "static" else ""
+                if address:
+                    address += "/" + str(ipaddress.IPv4Network('0.0.0.0/{}'.format(s["Netmask"])).prefixlen)
+                dns_servers += s.get("DomainNameServers", [])
+            else:
+                method = ""
+                address = s.get("Address", "")
+                gateway = s.get("Gateway", "")
+                dns = ", ".join(s.get("DomainNameServers", []))
+                dns_servers += s.get("DomainNameServers", [])
 
-            if connect and s["Method"] == "static":
-                cmd = ['ip', 'addr', 'add', address, 'dev', s["Interface"]]
-                try:
-                    subprocess.check_output(cmd)
-                except subprocess.CalledProcessError as e:
-                    print(f"Failed to set the ip address {address}: {e}")
-                    sys.exit(1)
+            result.append([context_number, interface, ip_version, properties.get("AccessPointName", ""), method, address, gateway, dns])
 
-                cmd = ['ip', 'route', 'replace', 'default', 'via', gateway, 'dev', s["Interface"]]
-                try:
-                    subprocess.check_output(cmd)
-                except subprocess.CalledProcessError as e:
-                    print(f"Failed to set the default gateway {gateway}: {e}")
-
-                # ensure that we route traffic to WWAN dns servers over the WWAN interface
-                for dns4_server in dns4_servers:
-                    cmd = ['ip', 'route', 'replace', dns4_server + '/32', 'via', gateway, 'dev', s["Interface"]]
+            if connect and interface:
+                if address:
+                    cmd = ['ip', 'addr', 'add', address, 'dev', interface]
                     try:
                         subprocess.check_output(cmd)
                     except subprocess.CalledProcessError as e:
-                        print(f"Failed to set the default dns {dns4_server} for gateway {gateway}: {e}")
-                        sys.exit(1)
+                        print(f"Failed to set the ip address {address}: {e}")
+                        return
 
-            if s["Method"] == "static":
-                dns_servers += dns4_servers
+                if gateway:
+                    cmd = ['ip', 'route', 'replace', 'default', 'via', gateway, 'dev', interface]
+                    try:
+                        subprocess.check_output(cmd)
+                    except subprocess.CalledProcessError as e:
+                        print(f"Failed to set the default gateway {gateway}: {e}")
 
-        if "Address" in settings6:
-            s = settings6
+                for dns_server in s.get("DomainNameServers", []):
+                    cmd = ['ip', 'route', 'replace', f"{dns_server}/{'32' if ip_version == 'ipv4' else '128'}", 'via', gateway, 'dev', interface]
+                    try:
+                        subprocess.check_output(cmd)
+                    except subprocess.CalledProcessError as e:
+                        print(f"Failed to set the default dns {dns_server} for gateway {gateway}: {e}")
 
-            if connect and not has_flushed:
-                cmd = ['ip', 'addr', 'flush', 'dev', s['Interface']]
-                try:
-                    subprocess.check_output(cmd)
-                    has_flushed = True
-                except subprocess.CalledProcessError as e:
-                    print(f"Failed to flush: {e}")
-                    sys.exit(1)
+    if connect or disconnect:
+        if context_to_modify:
+            context_path, properties = context_to_modify
+            print(f"{'Connecting' if connect else 'Disconnecting'} context {context_number}")
 
-            address = s["Address"]
-            gateway = s["Gateway"]
-            dns = ", ".join(s["DomainNameServers"])
-            result.append([s["Interface"], "ipv6", properties["AccessPointName"], "", address, gateway, dns])
-            dns6_servers = s["DomainNameServers"]
+            try:
+                new_state = dbus.Boolean(1) if connect else dbus.Boolean(0)
+                context_interface = dbus.Interface(bus.get_object('org.ofono', context_path),
+                                                   'org.ofono.ConnectionContext')
+                context_interface.SetProperty("Active", new_state)
+                print(f"{'Connected' if connect else 'Disconnected'} context {context_number}")
+            except dbus.exceptions.DBusException as e:
+                print(f"Failed to {'connect' if connect else 'disconnect'} context {context_number}: {e}")
+                return
 
             if connect:
-                cmd = ['ip', 'addr', 'add', address, 'dev', s["Interface"]]
+                time.sleep(2) # wait a bit for context to activate and get an ip
+
                 try:
-                    subprocess.check_output(cmd)
-                except subprocess.CalledProcessError as e:
-                    print(f"Failed to set the ip address {address}: {e}")
-                    sys.exit(1)
+                    updated_contexts = connman.GetContexts()
+                except dbus.exceptions.DBusException:
+                    print("Could not fetch updated contexts after activation")
+                    return
 
-                cmd = ['ip', 'route', 'replace', 'default', 'via', gateway, 'dev', s["Interface"]]
-                try:
-                    subprocess.check_output(cmd)
-                except subprocess.CalledProcessError as e:
-                    print(f"Failed to set the default gateway {gateway}: {e}")
-                    sys.exit(1)
+                activated_context = next((ctx for ctx in updated_contexts if ctx[0] == context_path), None)
 
-                # ensure that we route traffic to WWAN dns servers over the WWAN interface
-                for dns6_server in dns6_servers:
-                    cmd = ['ip', 'route', 'replace', dns6_server + '/128', 'via', gateway, 'dev', s["Interface"]]
-                    try:
-                        subprocess.check_output(cmd)
-                    except subprocess.CalledProcessError as e:
-                        print(f"Failed to set the default dns {dns6_server} for gateway {gateway}: {e}")
-                        sys.exit(1)
+                if activated_context:
+                    _, updated_properties = activated_context
+                    settings4 = updated_properties.get('Settings', {})
+                    settings6 = updated_properties.get('IPv6.Settings', {})
 
-            dns_servers += dns6_servers
+                    process_settings(settings4, "ipv4")
+                    process_settings(settings6, "ipv6")
 
-        if resolv:
-            update_resolvconf(dns_servers)
+                    if resolv:
+                        update_resolvconf(dns_servers)
 
-    print(tabulate.tabulate(result, headers=["Interface", "Protocol", "APN", "Method", "Address", "Gateway", "DNS"]))
+                    if result:
+                        headers = ["Context", "Interface", "Protocol", "APN", "Method", "Address", "Gateway", "DNS"]
+                        print("Updated context information:")
+                        print(tabulate.tabulate(result, headers=headers, tablefmt="simple"))
+                else:
+                    print("Could not find the activated context in the updated contexts")
+            else:
+                print(f"Context {context_number} disconnected")
+
+    else:
+        all_contexts = []
+        for i, (_, props) in enumerate(contexts, 1):
+            settings = props.get('Settings', {})
+            ipv4 = dict(settings)
+            all_contexts.append([
+                i,
+                ipv4.get('Interface', ''),
+                'ipv4',
+                props.get('AccessPointName', ''),
+                ipv4.get('Method', ''),
+                f"{ipv4.get('Address', '')}/{ipv4.get('Netmask', '')}" if ipv4.get('Address') else '',
+                ipv4.get('Gateway', ''),
+                ', '.join(ipv4.get('DomainNameServers', []))
+            ])
+
+            ipv6 = dict(props.get('IPv6.Settings', {}))
+            if ipv6:
+                all_contexts.append([
+                    i,
+                    ipv6.get('Interface', ''),
+                    'ipv6',
+                    props.get('AccessPointName', ''),
+                    '',
+                    ipv6.get('Address', ''),
+                    ipv6.get('Gateway', ''),
+                    ', '.join(ipv6.get('DomainNameServers', []))
+                ])
+        if all_contexts:
+            headers = ["Context", "Interface", "Protocol", "APN", "Method", "Address", "Gateway", "DNS"]
+            print(tabulate.tabulate(all_contexts, headers=headers, tablefmt="simple"))
+        else:
+            print("No contexts found")
 
 def action_sms(destination, message=None):
     init()
@@ -395,10 +439,15 @@ def main():
     sub.add_parser('online', help="Enable modem")
     sub.add_parser('offline', help="Disable modem")
     sub.add_parser('operators', help="Display operator info")
+
     parser_wan = sub.add_parser('wan', help="Control internet access")
-    parser_wan.add_argument('--connect', help="Bring up first connection", action="store_true")
-    parser_wan.add_argument('--append-dns', help="Add the providers DNS servers to /etc/resolv.conf",
-                            dest="resolv", action="store_true")
+    group = parser_wan.add_mutually_exclusive_group()
+    group.add_argument('--connect', action="store_true", help="Bring up connection")
+    group.add_argument('--disconnect', action="store_true", help="Bring down connection")
+    parser_wan.add_argument('--append-dns', dest="resolv", action="store_true",
+                            help="Add the providers DNS servers to /etc/resolv.conf")
+    parser_wan.add_argument('--context', type=int, help="Specify context number (default: all contexts)")
+
     parser_sms = sub.add_parser('sms', help="Send sms message")
     parser_sms.add_argument('--message', '-m', help="The message, if left out your editor will be opened")
     parser_sms.add_argument('destination', help="Destination number for the message")
@@ -431,7 +480,7 @@ def main():
         return
 
     if args.action == "wan":
-        action_wan(args.connect, args.resolv)
+        action_wan(args.connect, args.disconnect, args.resolv, args.context)
         return
 
     if args.action == "sms":
