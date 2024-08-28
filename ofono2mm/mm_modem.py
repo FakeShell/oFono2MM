@@ -849,29 +849,33 @@ class MMModemInterface(ServiceInterface):
             "Properties": Variant('a{sv}', properties)
         })
 
+        # users would usually have to do
+        # set-context-property 0 AccessPointName example.apn && activate-context 1
+        # to activate the correct context for ofono2mm to use, lets do it on bearer creation to not need ofono scripts
+        chosen_apn = ''
+        ofono_ctx = ''
         internet_ctx_exists = False
-        if 'org.ofono.ConnectionManager' in self.ofono_interfaces:
-            # users would usually have to do
-            # set-context-property 0 AccessPointName example.apn && activate-context 1
-            # to activate the correct context for ofono2mm to use, lets do it on bearer creation to not need ofono scripts
+        contexts = []
+        try:
             contexts = await self.ofono_interfaces['org.ofono.ConnectionManager'].call_get_contexts()
-            chosen_apn = ''
-            ofono_ctx = ''
-            for ctx in contexts:
-                name = ctx[1].get('Type', Variant('s', '')).value
-                apn = ctx[1].get('AccessPointName', Variant('s', '')).value
-                if name.lower() == "internet":
-                    if apn:
-                        chosen_apn = apn
-                    ofono_ctx = ctx[0]
+        except Exception as e:
+            ofono2mm_print(f"Failed to get ofono contexts, ignoring", self.verbose)
 
-                if ofono_ctx:
-                    internet_ctx_exists = True
-                    ofono_ctx_interface = self.ofono_client["ofono_context"][ofono_ctx]['org.ofono.ConnectionContext']
-                    await ofono_ctx_interface.call_set_property("Active", Variant('b', False))
-                    await ofono_ctx_interface.call_set_property("AccessPointName", Variant('s', chosen_apn))
-                    await ofono_ctx_interface.call_set_property("Protocol", Variant('s', 'ip'))
-                    await ofono_ctx_interface.call_set_property("Active", Variant('b', True))
+        for ctx in contexts:
+            name = ctx[1].get('Type', Variant('s', '')).value
+            apn = ctx[1].get('AccessPointName', Variant('s', '')).value
+            if name.lower() == "internet":
+                if apn:
+                    chosen_apn = apn
+                ofono_ctx = ctx[0]
+
+            if ofono_ctx:
+                internet_ctx_exists = True
+                ofono_ctx_interface = self.ofono_client["ofono_context"][ofono_ctx]['org.ofono.ConnectionContext']
+                await ofono_ctx_interface.call_set_property("Active", Variant('b', False))
+                await ofono_ctx_interface.call_set_property("AccessPointName", Variant('s', chosen_apn))
+                await ofono_ctx_interface.call_set_property("Protocol", Variant('s', 'ip'))
+                await ofono_ctx_interface.call_set_property("Active", Variant('b', True))
 
         if not internet_ctx_exists:
             try:
