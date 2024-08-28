@@ -66,6 +66,7 @@ class MMModemVoiceInterface(ServiceInterface):
 
         self.set_emergency_mode()
 
+        object_path = f'/org/freedesktop/ModemManager1/Call/{call_i}'
         if props['State'].value == 'incoming':
             mm_call_interface = MMCallInterface(self.ofono_client, self.ofono_interfaces, self.verbose)
             mm_call_interface.props.update({
@@ -79,10 +80,10 @@ class MMModemVoiceInterface(ServiceInterface):
             mm_call_interface.voicecall = path
             mm_call_interface.init_call()
 
-            self.bus.export(f'/org/freedesktop/ModemManager1/Call/{call_i}', mm_call_interface)
-            self.props['Calls'].value.append(f'/org/freedesktop/ModemManager1/Call/{call_i}')
+            self.bus.export(object_path, mm_call_interface)
+            self.props['Calls'].value.append(object_path)
             self.emit_properties_changed({'Calls': self.props['Calls'].value})
-            self.CallAdded(f'/org/freedesktop/ModemManager1/Call/{call_i}')
+            self.CallAdded(object_path)
             call_i += 1
         elif props['State'].value == 'alerting':
             cleaned_number = self.clean_phone_number(props['LineIdentification'].value)
@@ -98,10 +99,10 @@ class MMModemVoiceInterface(ServiceInterface):
             mm_call_interface.voicecall = path
             mm_call_interface.init_call()
 
-            self.bus.export(f'/org/freedesktop/ModemManager1/Call/{call_i}', mm_call_interface)
-            self.props['Calls'].value.append(f'/org/freedesktop/ModemManager1/Call/{call_i}')
+            self.bus.export(object_path, mm_call_interface)
+            self.props['Calls'].value.append(object_path)
             self.emit_properties_changed({'Calls': self.props['Calls'].value})
-            self.CallAdded(f'/org/freedesktop/ModemManager1/Call/{call_i}')
+            self.CallAdded(object_path)
             call_i += 1
 
     async def remove_call(self, path):
@@ -111,11 +112,13 @@ class MMModemVoiceInterface(ServiceInterface):
 
         call_i -= 1
 
+        object_path = f'/org/freedesktop/ModemManager1/Call/{call_i}'
+
         try:
-            self.props['Calls'].value.remove(f'/org/freedesktop/ModemManager1/Call/{call_i}')
-            self.bus.unexport(f'/org/freedesktop/ModemManager1/Call/{call_i}')
+            self.props['Calls'].value.remove(object_path)
+            self.bus.unexport(object_path)
             self.emit_properties_changed({'Calls': self.props['Calls'].value})
-            self.CallDeleted(f'/org/freedesktop/ModemManager1/Call/{call_i}')
+            self.CallDeleted(object_path)
         except Exception as e:
             ofono2mm_print(f"Failed to remove call object {path}: {e}", self.verbose)
 
@@ -169,7 +172,6 @@ class MMModemVoiceInterface(ServiceInterface):
         mm_call_interface.voicecall = path
         mm_call_interface.init_call()
 
-        object_path = f'/org/freedesktop/ModemManager1/Call/{call_i}'
         self.bus.export(object_path, mm_call_interface)
         self.props['Calls'].value.append(object_path)
         self.emit_properties_changed({'Calls': self.props['Calls'].value})
@@ -237,5 +239,4 @@ class MMModemVoiceInterface(ServiceInterface):
             if iface in self.ofono_interface_props:
                 self.ofono_interface_props[iface][name] = varval
             self.set_props()
-
         return ch
