@@ -4,7 +4,7 @@ from uuid import uuid4
 import NetworkManager
 
 from dbus_next.service import ServiceInterface, method
-from dbus_next import Variant
+from dbus_next import Variant, DBusError
 
 from ofono2mm.logging import ofono2mm_print
 from ofono2mm.utils import save_setting, read_setting
@@ -169,8 +169,13 @@ class MMModemSimpleInterface(ServiceInterface):
         except Exception as e:
             ofono2mm_print(f"Failed to set Network Manager APN: {e}", self.verbose)
 
+        if 'apn' not in properties:
+            ofono2mm_print("User provided no apn, using default value ''", self.verbose)
+            apn = ''
+        else:
+            apn = properties['apn']
         for b in self.mm_modem.bearers:
-            if self.mm_modem.bearers[b].props['Properties'].value['apn'] == properties['apn']:
+            if self.mm_modem.bearers[b].props['Properties'].value['apn'] == apn:
                 try:
                     await self.mm_modem.bearers[b].add_auth_ofono(properties['username'].value if 'username' in properties else '',
                                                                   properties['password'].value if 'password' in properties else '')
