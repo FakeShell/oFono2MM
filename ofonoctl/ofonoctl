@@ -72,7 +72,10 @@ def action_list():
             status = str(properties["Status"])
             network_name = str(properties["Name"])
             if status == "registered":
-                strength = float(properties["Strength"])
+                if "Strength" in properties:
+                    strength = float(properties["Strength"])
+                else:
+                    strength = 0.0
                 registration = f"Registered to {network_name} ({strength}%)"
             else:
                 registration = f"{status.capitalize()}"
