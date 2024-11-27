@@ -109,9 +109,6 @@ class MMModemVoiceInterface(ServiceInterface):
         ofono2mm_print(f"Remove call with object path {path}", self.verbose)
 
         global call_i
-
-        call_i -= 1
-
         object_path = f'/org/freedesktop/ModemManager1/Call/{call_i}'
 
         try:
