@@ -963,7 +963,7 @@ class MMModemInterface(ServiceInterface):
 
         await self.ofono_modem.call_set_property('Online', Variant('b', True))
 
-        self.set_props()
+        await self.set_props()
 
     @method()
     async def FactoryReset(self, code: 's'):
@@ -980,7 +980,7 @@ class MMModemInterface(ServiceInterface):
 
         await self.ofono_modem.call_set_property('Online', Variant('b', True))
 
-        self.set_props()
+        await self.set_props()
 
     @method()
     async def SetPowerState(self, state: 'u'):
@@ -999,7 +999,7 @@ class MMModemInterface(ServiceInterface):
 
             await self.ofono_modem.call_set_property('Online', Variant('b', True))
 
-            self.set_props()
+            await self.set_props()
 
     @method()
     def SetCurrentCapabilities(self, capabilities: 'u'):
@@ -1038,7 +1038,7 @@ class MMModemInterface(ServiceInterface):
         else:
             raise DBusError('org.freedesktop.ModemManager1.Error.Core.Unsupported', f'The given combination of allowed and preferred modes is not supported')
 
-        self.set_props()
+        await self.set_props()
 
     @method()
     def SetCurrentBands(self, bands: 'au'):
