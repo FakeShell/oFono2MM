@@ -25,6 +25,7 @@ class MMModemVoiceInterface(ServiceInterface):
             'Calls': Variant('ao', []),
             'EmergencyOnly': Variant('b', False),
         }
+        self.call_path_map = {}
 
     def set_props(self):
         ofono2mm_print("Setting properties", self.verbose)
@@ -82,6 +83,25 @@ class MMModemVoiceInterface(ServiceInterface):
 
             self.bus.export(object_path, mm_call_interface)
             self.props['Calls'].value.append(object_path)
+            self.call_path_map[path] = object_path
+            self.emit_properties_changed({'Calls': self.props['Calls'].value})
+            self.CallAdded(object_path)
+            call_i += 1
+        elif props['State'].value == 'dialing':
+            mm_call_interface = MMCallInterface(self.ofono_client, self.ofono_interfaces, self.verbose)
+            mm_call_interface.props.update({
+                'State': Variant('i', 2),  # ringing out MM_CALL_STATE_RINGING_OUT
+                'StateReason': Variant('i', 0), # outgoing started MM_CALL_STATE_REASON_UNKNOWN
+                'Direction': Variant('i', 2), # outgoing MM_CALL_DIRECTION_OUTGOING
+                'Number': Variant('s', props['LineIdentification'].value),
+            })
+
+            mm_call_interface.voicecall = path
+            mm_call_interface.init_call()
+
+            self.bus.export(object_path, mm_call_interface)
+            self.props['Calls'].value.append(object_path)
+            self.call_path_map[path] = object_path
             self.emit_properties_changed({'Calls': self.props['Calls'].value})
             self.CallAdded(object_path)
             call_i += 1
@@ -101,6 +121,7 @@ class MMModemVoiceInterface(ServiceInterface):
 
             self.bus.export(object_path, mm_call_interface)
             self.props['Calls'].value.append(object_path)
+            self.call_path_map[path] = object_path
             self.emit_properties_changed({'Calls': self.props['Calls'].value})
             self.CallAdded(object_path)
             call_i += 1
@@ -108,16 +129,17 @@ class MMModemVoiceInterface(ServiceInterface):
     async def remove_call(self, path):
         ofono2mm_print(f"Remove call with object path {path}", self.verbose)
 
-        global call_i
-        object_path = f'/org/freedesktop/ModemManager1/Call/{call_i}'
-
         try:
-            self.props['Calls'].value.remove(object_path)
-            self.bus.unexport(object_path)
+            mm_path = self.call_path_map[path]
+            self.props['Calls'].value.remove(mm_path)
+            self.bus.unexport(mm_path)
+            del self.call_path_map[path]
             self.emit_properties_changed({'Calls': self.props['Calls'].value})
-            self.CallDeleted(object_path)
+            self.CallDeleted(mm_path)
+        except KeyError:
+            ofono2mm_print(f"No mapping found for ofono path {path}", self.verbose)
         except Exception as e:
-            ofono2mm_print(f"Failed to remove call object {path}: {e}", self.verbose)
+            ofono2mm_print(f"Error while removing call {path}: {e}", self.verbose)
 
         self.set_emergency_mode()
 
@@ -133,6 +155,9 @@ class MMModemVoiceInterface(ServiceInterface):
         if path in self.props['Calls'].value:
             await self.ofono_interfaces['org.ofono.VoiceCallManager'].call_hangup_all()
             self.props['Calls'].value.remove(path)
+            ofono_path = next((k for k, v in self.call_path_map.items() if v == path), None)
+            if ofono_path:
+                del self.call_path_map[ofono_path]
             self.bus.unexport(path)
             self.emit_properties_changed({'Calls': self.props['Calls'].value})
             self.CallDeleted(path)
@@ -153,7 +178,7 @@ class MMModemVoiceInterface(ServiceInterface):
         mm_call_interface = MMCallInterface(self.ofono_client, self.ofono_interfaces, self.verbose)
         mm_call_interface.props.update({
             'State': Variant('i', 2), # ringing out MM_CALL_STATE_RINGING_OUT
-            'StateReason': Variant('i', 0), # outgoing started MM_CALL_STATE_REASON_UNKNOWN
+            'StateReason': Variant('i', 1), # outgoing started MM_CALL_STATE_REASON_OUTGOING_STARTED
             'Direction': Variant('i', 2), # outgoing MM_CALL_DIRECTION_OUTGOING
             'Number': Variant('s', properties['number'].value),
         })
@@ -171,6 +196,7 @@ class MMModemVoiceInterface(ServiceInterface):
 
         self.bus.export(object_path, mm_call_interface)
         self.props['Calls'].value.append(object_path)
+        self.call_path_map[path] = object_path
         self.emit_properties_changed({'Calls': self.props['Calls'].value})
         self.CallAdded(object_path)
         call_i += 1

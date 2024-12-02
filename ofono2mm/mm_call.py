@@ -23,7 +23,7 @@ class MMCallInterface(ServiceInterface):
             'AudioFormat': Variant('a{sv}', {
                 "encoding": Variant('s', 'pcm'),
                 "resolution": Variant('s', 's16le'),
-                "rate": Variant('i', 48000),
+                "rate": Variant('u', 48000),
             })
         }
 
@@ -40,6 +40,18 @@ class MMCallInterface(ServiceInterface):
                 old_state = self.props['State'].value
                 new_state = 4 # active MM_CALL_STATE_ACTIVE
                 reason = 3 # accepted MM_CALL_STATE_REASON_ACCEPTED
+                self.props['State'] = Variant('i', new_state)
+                self.StateChanged(old_state, new_state, reason)
+            elif value.value == "alerting":
+                old_state = self.props['State'].value
+                new_state = 2 # ringing out MM_CALL_STATE_RINGING_OUT
+                reason = 1 # outgoing started MM_CALL_STATE_REASON_OUTGOING_STARTED
+                self.props['State'] = Variant('i', new_state)
+                self.StateChanged(old_state, new_state, reason)
+            elif value.value == "disconnected":
+                old_state = self.props['State'].value
+                new_state = 4 # terminated MM_CALL_STATE_TERMINATED
+                reason = 7 # terminalted MM_CALL_STATE_REASON_TERMINATED
                 self.props['State'] = Variant('i', new_state)
                 self.StateChanged(old_state, new_state, reason)
 
