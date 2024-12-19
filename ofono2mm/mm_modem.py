@@ -875,9 +875,22 @@ class MMModemInterface(ServiceInterface):
     async def doCreateBearer(self, properties):
         global bearer_i
 
-        if 'org.ofono.ConnectionManager' not in self.ofono_interfaces:
-            ofono2mm_print("oFono ConnectionManager is not available, skipping", self.verbose)
-            return
+        # ConnectionManager and get_contexts can take a bit to come up, so...
+
+        retries_left = 5
+
+        while retries_left > 0:
+            try:
+                contexts = await self.ofono_proxy['org.ofono.ConnectionManager'].call_get_contexts()
+                break
+            except Exception as e:
+                retries_left -= 1
+                if retries_left > 0:
+                    await self.add_ofono_interface('org.ofono.ConnectionManager')
+                    await asyncio.sleep(0.5)
+                else:
+                    ofono2mm_print(f"Failed to get contexts: {e}", self.verbose)
+                    return
 
         ofono2mm_print(f"Creating bearer {bearer_i} with properties: {properties}", self.verbose)
         mm_bearer_interface = MMBearerInterface(self.ofono_client, self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self, self.verbose)
