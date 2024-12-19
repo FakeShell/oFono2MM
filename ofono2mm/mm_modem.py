@@ -424,6 +424,7 @@ class MMModemInterface(ServiceInterface):
             except Exception as e:
                 retries_left -= 1
                 if retries_left > 0:
+                    await self.add_ofono_interface('org.ofono.ConnectionManager')
                     await asyncio.sleep(0.5)
                 else:
                     ofono2mm_print(f"Failed to get contexts: {e}", self.verbose)
