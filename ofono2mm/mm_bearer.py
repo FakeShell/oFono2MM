@@ -110,7 +110,7 @@ class MMBearerInterface(ServiceInterface):
                     retries_left -= 1
                     if retries_left == 0:
                         ofono2mm_print(f"Failed to get contexts: {e}", self.verbose)
-                        raise e
+                        return
                     else:
                         await asyncio.sleep(0.2)
 
