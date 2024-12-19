@@ -161,15 +161,21 @@ class MMModemInterface(ServiceInterface):
             ofono2mm_print(f"Interface is {iface} which is unused, skipping", self.verbose)
             return
 
-        ofono2mm_print(f"Add oFono interface for iface {iface}", self.verbose)
-
-        try:
-            await self.ofono_interface_props[iface].init(iface in self.interfaces_without_props)
-
-            self.ofono_interfaces.update({iface: self.ofono_proxy[iface]})
-        except Exception as e:
-            ofono2mm_print(f"oFono interface {iface} was not ready: {e}", self.verbose)
-            return
+        retries_left = 5
+        while retries_left > 0:
+            try:
+                ofono2mm_print(f"Add oFono interface for iface {iface} (attempts left: {retries_left})", self.verbose)
+                await self.ofono_interface_props[iface].init(iface in self.interfaces_without_props)
+                self.ofono_interfaces.update({iface: self.ofono_proxy[iface]})
+                break
+            except Exception as e:
+                retries_left -= 1
+                if retries_left > 0:
+                    ofono2mm_print(f"oFono interface {iface} was not ready: {e}, retrying in 0.5s", self.verbose)
+                    await asyncio.sleep(0.5)
+                else:
+                    ofono2mm_print(f"oFono interface {iface} failed after all retries: {e}", self.verbose)
+                    return
 
         if self.mm_modem3gpp_interface:
             self.mm_modem3gpp_interface.ofono_interface_props = self.ofono_interface_props
