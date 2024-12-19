@@ -68,6 +68,7 @@ class MMModemInterface(ServiceInterface):
         self.bearers = {}
 
         self.was_powered = False
+        self.enabled = True
 
         self.used_interfaces = {
             "org.ofono.Modem",
@@ -560,7 +561,7 @@ class MMModemInterface(ServiceInterface):
         old_props = self.props.copy()
         old_state = self.props['State'].value
         self.props['UnlockRequired'] = Variant('u', 1) # modem is unlocked MM_MODEM_LOCK_NONE
-        if 'Powered' in self.ofono_props and self.ofono_props['Powered'].value and 'org.ofono.SimManager' in self.ofono_interface_props:
+        if 'Powered' in self.ofono_props and self.ofono_props['Powered'].value and 'org.ofono.SimManager' in self.ofono_interface_props and self.enabled:
             ofono2mm_print("Have Powered and SimManager, setting properties", self.verbose)
             if 'Present' in self.ofono_interface_props['org.ofono.SimManager']:
                 ofono2mm_print("Have Present, setting properties", self.verbose)
@@ -818,7 +819,7 @@ class MMModemInterface(ServiceInterface):
         self.props['Model'] = Variant('s', self.ofono_props['Model'].value if 'Model' in self.ofono_props else 'binder')
 
         if old_state != self.props['State'].value:
-            self.StateChanged(old_state, self.props['State'].value, 1)
+            self.StateChanged(old_state, self.props['State'].value, 0)
 
         changed_props = {}
         for prop in self.props:
@@ -835,15 +836,24 @@ class MMModemInterface(ServiceInterface):
             ofono2mm_print("Modem is in an unknown state, skipping", self.verbose)
             return
 
-        old_state = self.props['State'].value
-        self.props['State'] = Variant('i', 6 if enable else 3)
-        self.StateChanged(old_state, self.props['State'].value, 1)
-        self.emit_properties_changed({'State': self.props['State'].value})
+        self.enabled = enable
 
-        try:
-            await self.ofono_modem.call_set_property('Online', Variant('b', enable))
-        except Exception as e:
-            ofono2mm_print(f"Failed to enable with state {enable}: {e}", self.verbose)
+        if enable:
+            try:
+                await self.ofono_modem.call_set_property('Powered', Variant('b', enable))
+                await self.ofono_modem.call_set_property('Online', Variant('b', enable))
+            except Exception as e:
+                ofono2mm_print(f"Failed to enable with state {enable}: {e}", self.verbose)
+        else:
+            try:
+                await self.ofono_modem.call_set_property('Online', Variant('b', enable))
+            except Exception as e:
+                ofono2mm_print(f"Failed to enable with state {enable}: {e}", self.verbose)
+
+        old_state = self.props['State'].value
+        self.props['State'] = Variant('i', 6 if enable else 3) # 6 is STATE_ENABLED, 3 is STATE_DISABLED
+        self.StateChanged(old_state, self.props['State'].value, 0)
+        self.emit_properties_changed({'State': self.props['State'].value})
 
         await self.set_props()
 
@@ -965,7 +975,7 @@ class MMModemInterface(ServiceInterface):
 
         old_state = self.props['State'].value
         self.props['State'] = Variant('i', 6)  # 6 typically represents an enabled state
-        self.StateChanged(old_state, self.props['State'].value, 1)
+        self.StateChanged(old_state, self.props['State'].value, 0)
         self.emit_properties_changed({'State': self.props['State'].value})
 
         await self.ofono_modem.call_set_property('Online', Variant('b', True))
@@ -982,7 +992,7 @@ class MMModemInterface(ServiceInterface):
 
         old_state = self.props['State'].value
         self.props['State'] = Variant('i', 6)  # 6 typically represents an enabled state
-        self.StateChanged(old_state, self.props['State'].value, 1)
+        self.StateChanged(old_state, self.props['State'].value, 0)
         self.emit_properties_changed({'State': self.props['State'].value})
 
         await self.ofono_modem.call_set_property('Online', Variant('b', True))
@@ -993,20 +1003,20 @@ class MMModemInterface(ServiceInterface):
     async def SetPowerState(self, state: 'u'):
         ofono2mm_print(f"Setting power state to {state}", self.verbose)
 
+        if self.props['State'].value != 3:
+            ofono2mm_print("SetPowerState ignored, modem is disabled", self.verbose)
+            return
+
         if state == 1:
-            await self.ofono_modem.call_set_property('Powered', Variant('b', False))
+            self.was_powered = False
+        elif state in [2, 3]:  # If state is 'on' or 'low'
+            self.was_powered = True
 
-        if state in [2, 3]:  # If state is 'on' or 'low'
-            await self.ofono_modem.call_set_property('Powered', Variant('b', True))
+        await self.ofono_modem.call_set_property('Powered', Variant('b', True))
+        self.props['PowerState'] = Variant('i', state)
+        self.emit_properties_changed({'PowerState': self.props['PowerState'].value})
 
-            old_state = self.props['State'].value
-            self.props['State'] = Variant('i', 6)  # 6 typically represents an enabled state
-            self.StateChanged(old_state, self.props['State'].value, 1)
-            self.emit_properties_changed({'State': self.props['State'].value})
-
-            await self.ofono_modem.call_set_property('Online', Variant('b', True))
-
-            await self.set_props()
+        await self.set_props()
 
     @method()
     def SetCurrentCapabilities(self, capabilities: 'u'):
