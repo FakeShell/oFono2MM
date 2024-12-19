@@ -415,7 +415,7 @@ class MMModemInterface(ServiceInterface):
 
         # ConnectionManager and get_contexts can take a bit to come up, so...
 
-        retries_left = 3
+        retries_left = 5
 
         while retries_left > 0:
             try:
