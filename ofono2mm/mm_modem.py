@@ -79,6 +79,7 @@ class MMModemInterface(ServiceInterface):
             "org.ofono.ConnectionManager",
             "org.ofono.MessageManager",
             "org.ofono.VoiceCallManager",
+            "org.ofono.SupplementaryServices",
         }
 
         self.interfaces_without_props = {
