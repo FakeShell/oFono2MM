@@ -281,6 +281,7 @@ class MMModemSimpleInterface(ServiceInterface):
             connection_settings['gsm']['password'] = f'{password}'
 
         try:
+            self.network_manager_enable_wwan()
             conn = self.network_manager_connection_exists(f'{sim_id}')
             if not conn:
                 conn = NetworkManager.Settings.AddConnection(connection_settings)
@@ -325,6 +326,20 @@ class MMModemSimpleInterface(ServiceInterface):
 
         ofono2mm_print(f"Connection for SIM ID {target_sim_id} exists: {found}", self.verbose)
         return found
+
+    def network_manager_enable_wwan(self):
+        try:
+            bus = SystemBus()
+            nm_proxy = bus.get_object('org.freedesktop.NetworkManager', '/org/freedesktop/NetworkManager')
+
+            props = Interface(nm_proxy, 'org.freedesktop.DBus.Properties')
+            props.Set('org.freedesktop.NetworkManager', 'WwanEnabled', True)
+
+            ofono2mm_print("WWAN radio enabled successfully", self.verbose)
+        except dbus.exceptions.DBusException as e:
+            ofono2mm_print(f"Failed to enable WWAN radio: {e}", self.verbose)
+            return False
+        return True
 
     def ofono_changed(self, name, varval):
         self.set_props()
