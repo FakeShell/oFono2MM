@@ -108,12 +108,20 @@ class MMInterface(ServiceInterface):
 
         for path, props in ril_modems:
             ofono2mm_print(f"Found modem: {path}, {props}", self.verbose)
+
+            if not props['Powered'].value:
+                try:
+                    await self.ofono_client["ofono_modem"][path]['org.ofono.Modem'].call_set_property('Powered', Variant('b', True))
+                except DBusError as e:
+                    ofono2mm_print(f"Failed to power up modem {path}: {e}", self.verbose)
+                    pass
+
             if not props['Online'].value:
                 try:
                     await self.ofono_client["ofono_modem"][path]['org.ofono.Modem'].call_set_property('Online', Variant('b', True))
                 except DBusError as e:
                     # Can happen if airplane mode is on. Don't worry about it.
-                    ofono2mm_print(f"Failed to set modem {path} online: {e}", self.verbose)
+                    ofono2mm_print(f"Failed to set modem {path} to online: {e}", self.verbose)
                     pass
 
                 props.update(await self.ofono_client["ofono_modem"][path]['org.ofono.Modem'].call_get_properties())
