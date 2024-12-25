@@ -38,7 +38,7 @@ class DBusInterfaceProperties:
                     if retries_left > 0:
                         await asyncio.sleep(0.5)
                     else:
-                        ofono2mm_print(f"Interface {self.interface} doesn't have properties? {e}", self.verbose)
+                        ofono2mm_print(f"Interface {self.interface} doesn't have properties? {str(e).strip()}", self.verbose)
 
         def __getitem__(self, prop):
             if prop in self.props:
