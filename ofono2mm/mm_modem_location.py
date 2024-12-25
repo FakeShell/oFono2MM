@@ -100,6 +100,8 @@ class MMModemLocationInterface(ServiceInterface):
         ofono2mm_print(f"Setup location with source flag {sources} and signal location {signal_location}", self.verbose)
         self.props['Enabled'] = Variant('u', sources)
         self.props['SignalsLocation'] = Variant('b', signal_location)
+        self.emit_properties_changed({'Enabled': self.props['Enabled'].value})
+        self.emit_properties_changed({'SignalsLocation': self.props['SignalsLocation'].value})
 
     @method()
     async def GetLocation(self) -> 'a{uv}':
@@ -148,6 +150,7 @@ supl-server={supl}
             raise DBusError('org.freedesktop.ModemManager1.Error.Core.Failed', f'Failed to change ownership of configuration directory: {e}')
 
         self.props['SuplServer'] = Variant('s', supl)
+        self.emit_properties_changed({'SuplServer': self.props['SuplServer'].value})
 
     @method()
     def InjectAssistanceData(self, data: 'ay') -> None:
@@ -157,6 +160,7 @@ supl-server={supl}
     def SetGpsRefreshRate(self, rate: 'u') -> None:
         ofono2mm_print(f"Setting GPS refresh rate to {rate}", self.verbose)
         self.props['GpsRefreshRate'] = Variant('u', rate)
+        self.emit_properties_changed({'GpsRefreshRate': self.props['GpsRefreshRate'].value})
 
     @dbus_property(access=PropertyAccess.READ)
     def Capabilities(self) -> 'u':
