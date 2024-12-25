@@ -271,6 +271,16 @@ class MMModemInterface(ServiceInterface):
                 return
             await asyncio.sleep(0.3)
 
+    async def init_supplementary_services(self):
+        while True:
+            ofono2mm_print("Waiting for oFono supplementary services to appear", self.verbose)
+            if 'org.ofono.SupplementaryServices' in self.ofono_interfaces:
+                ofono2mm_print("oFono supplementary services appeared, initializing modem ussd interface", self.verbose)
+                self.mm_modem3gpp_ussd_interface.init_ussd()
+                await self.set_props()
+                return
+            await asyncio.sleep(0.3)
+
     async def init_mm_sim_interface(self):
         ofono2mm_print("Initialize SIM interface", self.verbose)
 
@@ -297,8 +307,10 @@ class MMModemInterface(ServiceInterface):
     async def init_mm_3gpp_ussd_interface(self):
         ofono2mm_print("Initialize 3GPP USSD interface", self.verbose)
 
-        self.mm_modem3gpp_ussd_interface = MMModem3gppUssdInterface(self.ofono_interfaces, self.modem_name, self.verbose)
+        self.mm_modem3gpp_ussd_interface = MMModem3gppUssdInterface(self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
         self.bus.export(f'/org/freedesktop/ModemManager1/Modem/{self.index}', self.mm_modem3gpp_ussd_interface)
+
+        self.loop.create_task(self.init_supplementary_services())
 
     async def init_mm_3gpp_profile_manager_interface(self):
         ofono2mm_print("Initialize 3GPP profile manager interface", self.verbose)

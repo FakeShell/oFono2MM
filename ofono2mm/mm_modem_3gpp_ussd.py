@@ -7,18 +7,26 @@ from dbus_fast import Variant, DBusError
 from ofono2mm.logging import ofono2mm_print
 
 class MMModem3gppUssdInterface(ServiceInterface):
-    def __init__(self, ofono_interfaces, modem_name, verbose=False):
+    def __init__(self, modem_name, ofono_interfaces, ofono_interface_props, verbose=False):
         super().__init__('org.freedesktop.ModemManager1.Modem.Modem3gpp.Ussd')
         self.modem_name = modem_name
         ofono2mm_print("Initializing 3GPP USSD interface", verbose)
         self.ofono_interfaces = ofono_interfaces
+        self.ofono_interface_props = ofono_interface_props
         self.verbose = verbose
-        self.network_notification_event = asyncio.Event()
         self.props = {
             'State': Variant('u', 0), # on runtime unknown MM_MODEM_3GPP_USSD_SESSION_STATE_UNKNOWN
             'NetworkNotification': Variant('s', ''),
             'NetworkRequest': Variant('s', ''),
         }
+
+    def init_ussd(self):
+        ofono2mm_print("Initializing signals", self.verbose)
+
+        if 'org.ofono.SupplementaryServices' in self.ofono_interfaces:
+            self.ofono_interfaces['org.ofono.SupplementaryServices'].on_notification_received(self.save_notification_received)
+            self.ofono_interfaces['org.ofono.SupplementaryServices'].on_request_received(self.save_request_received)
+            self.ofono_interfaces['org.ofono.SupplementaryServices'].on_property_changed(self.property_changed)
 
     @method()
     async def Initiate(self, command: 's') -> 's':
@@ -27,24 +35,10 @@ class MMModem3gppUssdInterface(ServiceInterface):
         if self.props['State'].value in (2, 3): # 2: active, 3: user-response
             raise DBusError('org.freedesktop.ModemManager1.Error.Core.WrongState', 'Cannot initiate USSD: a session is already active')
 
-        ret = await self.run_initiate(command)
-        return ret
-
-    async def run_initiate(self, command):
-        self.initiate_task = asyncio.create_task(
-            self.ofono_interfaces['org.ofono.SupplementaryServices'].call_initiate(command)
-        )
-        try:
-            await self.network_notification_event.wait() # Wait for the network notification to change
-            self.initiate_task.cancel() # Cancel the task when the event is triggered
-            try:
-                await self.initiate_task
-            except asyncio.CancelledError:
-                pass
-
-            return self.props['NetworkNotification'].value
-        except Exception as e:
-            ofono2mm_print(f"Failed to initiate USSD: {e}", self.verbose)
+        ret = await self.ofono_interfaces['org.ofono.SupplementaryServices'].call_initiate(command)
+        ussd_string = ret[1].value
+        ofono2mm_print(f"USSD request result: {ussd_string}", self.verbose)
+        return ussd_string
 
     @method()
     async def Respond(self, response: 's') -> 's':
@@ -82,30 +76,12 @@ class MMModem3gppUssdInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     async def State(self) -> 'u':
-        try:
-            result = await self.ofono_interfaces['org.ofono.SupplementaryServices'].call_get_properties()
-            result_str = result['State'].value
-
-            if result_str == 'idle':
-                self.props['State'] = Variant('u', 1) # idle MM_MODEM_3GPP_USSD_SESSION_STATE_IDLE
-            elif result_str == "active":
-                self.props['State'] = Variant('u', 2) # active MM_MODEM_3GPP_USSD_SESSION_STATE_ACTIVE
-            elif result_str == "user-response":
-                self.props['State'] = Variant('u', 3) # user response MM_MODEM_3GPP_USSD_SESSION_STATE_USER_RESPONSE
-            else:
-                self.props['State'] = Variant('u', 0) # unknown MM_MODEM_3GPP_USSD_SESSION_STATE_UNKNOWN
-
-            self.ofono_interfaces['org.ofono.SupplementaryServices'].on_notification_received(self.save_notification_received)
-            self.ofono_interfaces['org.ofono.SupplementaryServices'].on_request_received(self.save_request_received)
-        except Exception as e:
-            ofono2mm_print(f"Failed to get state, marking as unknown: {e}", self.verbose)
-            self.props['State'] = Variant('u', 0) # unknown MM_MODEM_3GPP_USSD_SESSION_STATE_UNKNOWN
-
         return self.props['State'].value
 
     def save_notification_received(self, message):
         ofono2mm_print(f"Save notification with message {message}", self.verbose)
         self.props['NetworkNotification'] = Variant('s', message)
+        self.emit_properties_changed({'NetworkNotification': self.props['NetworkNotification'].value})
 
     @dbus_property(access=PropertyAccess.READ)
     def NetworkNotification(self) -> 's':
@@ -113,10 +89,23 @@ class MMModem3gppUssdInterface(ServiceInterface):
 
     def save_request_received(self, message):
         ofono2mm_print(f"Save request with message {message}", self.verbose)
-        self.props['NetworkNotification'] = Variant('s', message)
-        self.network_notification_event.set() # Signal that the notification has been received
-        self.network_notification_event.clear() # Reset the event for the next notification
+        self.props['NetworkRequest'] = Variant('s', message)
+        self.emit_properties_changed({'NetworkRequest': self.props['NetworkRequest'].value})
 
     @dbus_property(access=PropertyAccess.READ)
     async def NetworkRequest(self) -> 's':
         return self.props['NetworkRequest'].value
+
+    async def property_changed(self, property, value):
+        ofono2mm_print(f"Property changed: {property}: {value.value}", self.verbose)
+        if property == "State":
+            if value.value == 'idle':
+                state = 1 # idle MM_MODEM_3GPP_USSD_SESSION_STATE_IDLE
+            elif value.value == "active":
+                state = 2 # active MM_MODEM_3GPP_USSD_SESSION_STATE_ACTIVE
+            elif value.value == "user-response":
+                state = 3 # user response MM_MODEM_3GPP_USSD_SESSION_STATE_USER_RESPONSE
+            else:
+                state = 0 # unknown MM_MODEM_3GPP_USSD_SESSION_STATE_UNKNOWN
+            self.props['State'] = Variant('u', state)
+            self.emit_properties_changed({'State': self.props['State'].value})
