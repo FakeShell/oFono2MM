@@ -11,10 +11,18 @@ class MMModemFirmwareInterface(ServiceInterface):
         ofono2mm_print("Initializing Firmware interface", verbose)
         self.mm_modem = mm_modem
         self.verbose = verbose
-        self.set_props()
+
+        self.props = {
+            'UpdateSettings': Variant('(ua{sv})', [1, {
+                'device-ids': Variant('as', ['OFONO-BINDER-PLUGIN']),
+                'version': Variant('s', '')
+            }])
+        }
 
     def set_props(self):
         ofono2mm_print("Setting properties", self.verbose)
+
+        old_props = self.props.copy()
 
         self.hardware_revision = self.mm_modem.props.get('HardwareRevision', Variant('s', ''))
         self.props = {
@@ -23,10 +31,6 @@ class MMModemFirmwareInterface(ServiceInterface):
                 'version': self.hardware_revision
             }])
         }
-
-    def emit_props_change(self):
-        old_props = self.props.copy()
-        self.set_props()
 
         for prop in self.props:
             if self.props[prop].value != old_props[prop].value:
