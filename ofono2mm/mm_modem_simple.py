@@ -229,7 +229,7 @@ class MMModemSimpleInterface(ServiceInterface):
 
         if not (("Present" in self.ofono_interface_props['org.ofono.SimManager'] and self.ofono_interface_props['org.ofono.SimManager']['Present'].value == 1) \
             and (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none')):
-            ofono2mm_print(f"SIM is still locked and/or not ready", self.verbose)
+            ofono2mm_print("SIM is still locked and/or not ready", self.verbose)
             await asyncio.sleep(3)
             return False
 
@@ -246,6 +246,10 @@ class MMModemSimpleInterface(ServiceInterface):
         try:
             await self.mm_modem.add_ofono_interface('org.ofono.NetworkRegistration')
             carrier_name = self.ofono_interface_props['org.ofono.NetworkRegistration']['Name'].value
+            if not carrier_name:
+                ofono2mm_print("Carrier name is empty. Not registered to a network yet", self.verbose)
+                await asyncio.sleep(3)
+                return False
         except Exception as e:
             ofono2mm_print(f"Failed to get carrier name: {e}", self.verbose)
             return False
