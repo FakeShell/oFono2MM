@@ -7,11 +7,12 @@ from dbus_fast import Variant, DBusError
 from ofono2mm.logging import ofono2mm_print
 
 class MMModemSignalInterface(ServiceInterface):
-    def __init__(self, modem_name, ofono_interfaces, verbose=False):
+    def __init__(self, modem_name, ofono_interfaces, ofono_interface_props, verbose=False):
         super().__init__('org.freedesktop.ModemManager1.Modem.Signal')
         self.modem_name = modem_name
         ofono2mm_print("Initializing Signal interface", verbose)
         self.ofono_interfaces = ofono_interfaces
+        self.ofono_interface_props = ofono_interface_props
         self.is_busy = False
         self.verbose = verbose
         self.props = {
@@ -45,6 +46,10 @@ class MMModemSignalInterface(ServiceInterface):
 
     async def set_props(self):
         ofono2mm_print("Setting properties", self.verbose)
+
+        if not (("Present" in self.ofono_interface_props['org.ofono.SimManager'] and self.ofono_interface_props['org.ofono.SimManager']['Present'].value == 1) \
+            and (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none')):
+            return
 
         if 'org.ofono.NetworkMonitor' in self.ofono_interfaces and not self.is_busy:
             self.is_busy = True
