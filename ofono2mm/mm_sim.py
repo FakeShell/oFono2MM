@@ -37,33 +37,33 @@ class MMSimInterface(ServiceInterface):
 
         if 'org.ofono.SimManager' in self.ofono_interface_props:
             if 'Present' in self.ofono_interface_props['org.ofono.SimManager']:
-                if self.ofono_interface_props['org.ofono.SimManager']:
+                if self.ofono_interface_props['org.ofono.SimManager']['Present'] == 1:
                     self.props['Active'] = Variant('b', True)
                 else:
                     self.props['Active'] = Variant('b', False)
             else:
                 self.props['Active'] = Variant('b', False)
+
             if 'CardIdentifier' in self.ofono_interface_props['org.ofono.SimManager']:
                 self.props['SimIdentifier'] = Variant('s', self.ofono_interface_props['org.ofono.SimManager']['CardIdentifier'].value)
             else:
                 self.props['SimIdentifier'] = Variant('s', '')
+
             if 'SubscriberIdentity' in self.ofono_interface_props['org.ofono.SimManager']:
                 self.props['Imsi'] = Variant('s', self.ofono_interface_props['org.ofono.SimManager']['SubscriberIdentity'].value)
             else:
                 self.props['Imsi'] = Variant('s', '')
 
+            MCC = ''
             if 'MobileCountryCode' in self.ofono_interface_props['org.ofono.SimManager']:
                 MCC = self.ofono_interface_props['org.ofono.SimManager']['MobileCountryCode'].value
-            else:
-                MCC = ''
 
+            MNC = ''
             if 'MobileNetworkCode' in self.ofono_interface_props['org.ofono.SimManager']:
                 MNC = self.ofono_interface_props['org.ofono.SimManager']['MobileNetworkCode'].value
-            else:
-                MNC = ''
 
-            self.props['OperatorIdentifier'] = Variant('s', f"{MCC}{MNC}")
-            self.props['PreferredNetworks'] = Variant('a(su)', [[f"{MCC}{MNC}", 19]])
+            self.props['OperatorIdentifier'] = Variant('s', f"{MCC}{MNC}" if MCC and MNC else "")
+            self.props['PreferredNetworks'] = Variant('a(su)', [[f"{MCC}{MNC}", 19]] if MCC and MNC else [])
         else:
             self.props['Active'] = Variant('b', False)
             self.props['SimIdentifier'] = Variant('s', '')
