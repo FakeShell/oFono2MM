@@ -69,6 +69,7 @@ class MMModemInterface(ServiceInterface):
 
         self.was_powered = False
         self.enabled = True
+        self.locked = False
 
         self.used_interfaces = {
             "org.ofono.Modem",
@@ -556,6 +557,11 @@ class MMModemInterface(ServiceInterface):
             bearer_i += 1
             self.emit_properties_changed({'Bearers': self.props['Bearers'].value})
 
+    async def sim_unlocked(self):
+        ofono2mm_print("SIM is now unlocked, exporting all interfaces again", self.verbose)
+        for iface in self.used_interfaces:
+            await self.add_ofono_interface(iface)
+
     async def set_props(self):
         ofono2mm_print("Setting properties", self.verbose)
 
@@ -563,9 +569,7 @@ class MMModemInterface(ServiceInterface):
         old_state = self.props['State'].value
         self.props['UnlockRequired'] = Variant('u', 1) # modem is unlocked MM_MODEM_LOCK_NONE
         if 'Powered' in self.ofono_props and self.ofono_props['Powered'].value and 'org.ofono.SimManager' in self.ofono_interface_props and self.enabled:
-            ofono2mm_print("Have Powered and SimManager, setting properties", self.verbose)
             if 'Present' in self.ofono_interface_props['org.ofono.SimManager']:
-                ofono2mm_print("Have Present, setting properties", self.verbose)
                 if not self.was_powered:
                     # Bring the modem online now that it's powered
                     try:
@@ -577,9 +581,7 @@ class MMModemInterface(ServiceInterface):
                         pass
 
                 if self.ofono_interface_props['org.ofono.SimManager']['Present'].value:
-                    ofono2mm_print("Have PinRequired, setting properties", self.verbose)
                     if not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none':
-                        ofono2mm_print("PinRequired is none, setting properties", self.verbose)
                         self.props['UnlockRequired'] = Variant('u', 1) # modem is unlocked MM_MODEM_LOCK_NONE
                         if self.ofono_props['Online'].value:
                             if 'org.ofono.NetworkRegistration' in self.ofono_interface_props:
@@ -602,13 +604,12 @@ class MMModemInterface(ServiceInterface):
                         self.props['UnlockRequired'] = Variant('u', 1) # modem is unlocked MM_MODEM_LOCK_NONE
                     else:
                         self.props['UnlockRequired'] = Variant('u', 2) # modem needs a pin MM_MODEM_LOCK_SIM_PIN
-                        self.props['State'] = Variant('i', 2)
+                        self.props['State'] = Variant('i', 2) # modem is locked MM_MODEM_STATE_LOCKED
+                        self.locked = True
 
                     self.props['Sim'] = self.sim
                     self.props['StateFailedReason'] = Variant('i', 0) # no failure MM_MODEM_STATE_FAILED_REASON_NONE
                 else:
-                    ofono2mm_print("Don't have PinRequired, setting properties", self.verbose)
-                    ofono2mm_print("But do we have Present: " + str(self.ofono_interface_props['org.ofono.SimManager']['Present'].value), self.verbose)
                     self.props['Sim'] = Variant('o', '/')
                     self.props['State'] = Variant('i', -1) # state unknown
                     self.props['StateFailedReason'] = Variant('i', 2) # sim missing MM_MODEM_STATE_FAILED_REASON_SIM_MISSING
@@ -617,6 +618,11 @@ class MMModemInterface(ServiceInterface):
                 self.props['StateFailedReason'] = Variant('i', 2) # sim missing MM_MODEM_STATE_FAILED_REASON_SIM_MISSING
 
             self.props['PowerState'] = Variant('i', 3) # power is on MM_MODEM_POWER_STATE_ON
+
+            lock_state = self.props['UnlockRequired'].value > 1
+            if self.locked == True and self.locked != lock_state:
+                await self.sim_unlocked()
+                self.locked = False
         else:
             self.was_powered = False
             self.props['State'] = Variant('i', 3) # modem is disabled MM_MODEM_STATE_DISABLED
