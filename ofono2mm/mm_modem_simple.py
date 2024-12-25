@@ -1,3 +1,5 @@
+import asyncio
+
 from time import time
 from uuid import uuid4
 
@@ -224,6 +226,12 @@ class MMModemSimpleInterface(ServiceInterface):
 
     async def network_manager_set_apn(self, force=False):
         ofono2mm_print("Generating Network Manager connection", self.verbose)
+
+        if not (("Present" in self.ofono_interface_props['org.ofono.SimManager'] and self.ofono_interface_props['org.ofono.SimManager']['Present'].value == 1) \
+            and (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none')):
+            ofono2mm_print(f"SIM is still locked and/or not ready", self.verbose)
+            await asyncio.sleep(3)
+            return False
 
         DBusGMainLoop(set_as_default=True)
 
