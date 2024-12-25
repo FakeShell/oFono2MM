@@ -9,12 +9,11 @@ from ofono2mm.logging import ofono2mm_print
 message_i = 1
 
 class MMModemMessagingInterface(ServiceInterface):
-    def __init__(self, bus, modem_name, ofono_props, ofono_interfaces, ofono_interface_props, verbose=False):
+    def __init__(self, bus, modem_name, ofono_interfaces, ofono_interface_props, verbose=False):
         super().__init__('org.freedesktop.ModemManager1.Modem.Messaging')
         self.modem_name = modem_name
         ofono2mm_print("Initializing Messaging interface", verbose)
         self.bus = bus
-        self.ofono_props = ofono_props
         self.ofono_interfaces = ofono_interfaces
         self.ofono_interface_props = ofono_interface_props
         self.verbose = verbose

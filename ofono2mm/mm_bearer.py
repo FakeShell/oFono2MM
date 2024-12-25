@@ -8,13 +8,12 @@ from ofono2mm.utils import async_retryable, save_setting, read_setting
 from ofono2mm.logging import ofono2mm_print
 
 class MMBearerInterface(ServiceInterface):
-    def __init__(self, ofono_client, modem_name, ofono_props, ofono_interfaces, ofono_interface_props, mm_modem, verbose=False):
+    def __init__(self, ofono_client, modem_name, ofono_interfaces, ofono_interface_props, mm_modem, verbose=False):
         super().__init__('org.freedesktop.ModemManager1.Bearer')
         self.modem_name = modem_name
         ofono2mm_print("Initializing Bearer interface", verbose)
         self.ofono_client = ofono_client
         self.ofono_proxy = self.ofono_client["ofono_modem"][modem_name]
-        self.ofono_props = ofono_props
         self.ofono_interfaces = ofono_interfaces
         self.ofono_interface_props = ofono_interface_props
         self.mm_modem = mm_modem

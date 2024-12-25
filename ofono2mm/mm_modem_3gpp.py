@@ -7,12 +7,11 @@ from dbus_fast import Variant, DBusError
 from ofono2mm.logging import ofono2mm_print
 
 class MMModem3gppInterface(ServiceInterface):
-    def __init__(self, ofono_client, modem_name, ofono_props, ofono_interfaces, ofono_interface_props, verbose=False):
+    def __init__(self, ofono_client, modem_name, ofono_interfaces, ofono_interface_props, verbose=False):
         super().__init__('org.freedesktop.ModemManager1.Modem.Modem3gpp')
         self.modem_name = modem_name
         ofono2mm_print("Initializing 3GPP interface", verbose)
         self.ofono_client = ofono_client
-        self.ofono_props = ofono_props
         self.ofono_interfaces = ofono_interfaces
         self.ofono_interface_props = ofono_interface_props
         self.verbose = verbose
@@ -85,7 +84,7 @@ class MMModem3gppInterface(ServiceInterface):
             self.props['OperatorCode'] = Variant('s', '')
             self.props['RegistrationState'] = Variant('u', 4) # unknown MM_MODEM_3GPP_REGISTRATION_STATE_UNKNOWN
 
-        self.props['Imei'] = Variant('s', self.ofono_props['Serial'].value if 'Serial' in self.ofono_props else '')
+        self.props['Imei'] = Variant('s', self.ofono_interface_props['org.ofono.Modem']['Serial'].value if 'Serial' in self.ofono_interface_props['org.ofono.Modem'] else '')
         self.props['EnabledFacilityLocks'] = Variant('u', 0) # none MM_MODEM_3GPP_FACILITY_NONE
 
         if ("Present" in self.ofono_interface_props['org.ofono.SimManager'] and self.ofono_interface_props['org.ofono.SimManager']['Present'].value == 1) \

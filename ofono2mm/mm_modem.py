@@ -45,7 +45,6 @@ class MMModemInterface(ServiceInterface):
         self.ofono_modem = self.ofono_proxy['org.ofono.Modem']
         self.ofono_interfaces = {}
         self.ofono_interface_props = DBusInterfaceProperties(self.ofono_proxy, verbose)
-        self.ofono_props = self.ofono_interface_props['org.ofono.Modem']
         self.mm_cell_type = 0 # on runtime unknown MM_CELL_TYPE_UNKNOWN
         self.mm_sim_interface = None
         self.mm_modem3gpp_interface = None
@@ -284,7 +283,7 @@ class MMModemInterface(ServiceInterface):
     async def init_mm_sim_interface(self):
         ofono2mm_print("Initialize SIM interface", self.verbose)
 
-        self.mm_sim_interface = MMSimInterface(self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
+        self.mm_sim_interface = MMSimInterface(self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
         self.bus.export(f'/org/freedesktop/ModemManager/SIM/{self.index}', self.mm_sim_interface)
         self.mm_sim_interface.set_props()
 
@@ -300,7 +299,7 @@ class MMModemInterface(ServiceInterface):
     async def init_mm_3gpp_interface(self):
         ofono2mm_print("Initialize 3GPP interface", self.verbose)
 
-        self.mm_modem3gpp_interface = MMModem3gppInterface(self.ofono_client, self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
+        self.mm_modem3gpp_interface = MMModem3gppInterface(self.ofono_client, self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
         self.bus.export(f'/org/freedesktop/ModemManager1/Modem/{self.index}', self.mm_modem3gpp_interface)
         await self.mm_modem3gpp_interface.set_props()
 
@@ -321,7 +320,7 @@ class MMModemInterface(ServiceInterface):
     async def init_mm_simple_interface(self):
         ofono2mm_print("Initialize Simple interface", self.verbose)
 
-        self.mm_modem_simple_interface = MMModemSimpleInterface(self, self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
+        self.mm_modem_simple_interface = MMModemSimpleInterface(self, self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
         self.bus.export(f'/org/freedesktop/ModemManager1/Modem/{self.index}', self.mm_modem_simple_interface)
         self.mm_modem_simple_interface.set_props()
 
@@ -374,7 +373,7 @@ class MMModemInterface(ServiceInterface):
     async def init_mm_voice_interface(self):
         ofono2mm_print("Initialize Voice interface", self.verbose)
 
-        self.mm_modem_voice_interface = MMModemVoiceInterface(self.bus, self.ofono_client, self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
+        self.mm_modem_voice_interface = MMModemVoiceInterface(self.bus, self.ofono_client, self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
         self.bus.export(f'/org/freedesktop/ModemManager1/Modem/{self.index}', self.mm_modem_voice_interface)
 
         self.loop.create_task(self.init_voice_call_manager())
@@ -382,7 +381,7 @@ class MMModemInterface(ServiceInterface):
     async def init_mm_messaging_interface(self):
         ofono2mm_print("Initialize Messaging interface", self.verbose)
 
-        self.mm_modem_messaging_interface = MMModemMessagingInterface(self.bus, self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
+        self.mm_modem_messaging_interface = MMModemMessagingInterface(self.bus, self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self.verbose)
         self.bus.export(f'/org/freedesktop/ModemManager1/Modem/{self.index}', self.mm_modem_messaging_interface)
 
         self.loop.create_task(self.init_message_manager())
@@ -446,7 +445,7 @@ class MMModemInterface(ServiceInterface):
         old_bearer_list = self.props['Bearers'].value
         for ctx in contexts:
             if ctx[1]['Type'].value == "internet":
-                mm_bearer_interface = MMBearerInterface(self.ofono_client, self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self, self.verbose)
+                mm_bearer_interface = MMBearerInterface(self.ofono_client, self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self, self.verbose)
                 self.mm_bearer_interfaces.append(mm_bearer_interface)
 
                 ip_method = 0
@@ -512,7 +511,7 @@ class MMModemInterface(ServiceInterface):
 
         global bearer_i
         if properties['Type'] == "internet":
-            mm_bearer_interface = MMBearerInterface(self.ofono_client, self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self, self.verbose)
+            mm_bearer_interface = MMBearerInterface(self.ofono_client, self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self, self.verbose)
             self.mm_bearer_interfaces.append(mm_bearer_interface)
 
             ip_method = 0
@@ -580,7 +579,7 @@ class MMModemInterface(ServiceInterface):
         old_props = self.props.copy()
         old_state = self.props['State'].value
         self.props['UnlockRequired'] = Variant('u', 1) # modem is unlocked MM_MODEM_LOCK_NONE
-        if 'Powered' in self.ofono_props and self.ofono_props['Powered'].value and 'org.ofono.SimManager' in self.ofono_interface_props and self.enabled:
+        if 'Powered' in self.ofono_interface_props['org.ofono.Modem'] and self.ofono_interface_props['org.ofono.Modem']['Powered'].value and 'org.ofono.SimManager' in self.ofono_interface_props and self.enabled:
             if 'Present' in self.ofono_interface_props['org.ofono.SimManager']:
                 if not self.was_powered:
                     # Bring the modem online now that it's powered
@@ -595,7 +594,7 @@ class MMModemInterface(ServiceInterface):
                 if self.ofono_interface_props['org.ofono.SimManager']['Present'].value:
                     if not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none':
                         self.props['UnlockRequired'] = Variant('u', 1) # modem is unlocked MM_MODEM_LOCK_NONE
-                        if self.ofono_props['Online'].value:
+                        if self.ofono_interface_props['org.ofono.Modem']['Online'].value:
                             if 'org.ofono.NetworkRegistration' in self.ofono_interface_props:
                                 if ("Status" in self.ofono_interface_props['org.ofono.NetworkRegistration']):
                                     if self.ofono_interface_props['org.ofono.NetworkRegistration']['Status'].value == 'registered' or self.ofono_interface_props['org.ofono.NetworkRegistration']['Status'].value == 'roaming':
@@ -831,11 +830,11 @@ class MMModemInterface(ServiceInterface):
             self.props['SupportedModes'] = Variant('a(uu)', [[0, 0]]) # allowed mode none, preferred mode none MM_MODEM_MODE_NONE
             self.props['CurrentModes'] = Variant('(uu)', [0, 0]) # allowed mode none, preferred mode none MM_MODEM_MODE_NONE
 
-        self.props['EquipmentIdentifier'] = Variant('s', self.ofono_props['Serial'].value if 'Serial' in self.ofono_props else '')
-        self.props['HardwareRevision'] = Variant('s', self.ofono_props['Revision'].value if 'Revision' in self.ofono_props else '')
-        self.props['Revision'] = Variant('s', self.ofono_props['SoftwareVersionNumber'].value if 'SoftwareVersionNumber' in self.ofono_props else '')
-        self.props['Manufacturer'] = Variant('s', self.ofono_props['Manufacturer'].value if 'Manufacturer' in self.ofono_props else 'ofono')
-        self.props['Model'] = Variant('s', self.ofono_props['Model'].value if 'Model' in self.ofono_props else 'binder')
+        self.props['EquipmentIdentifier'] = Variant('s', self.ofono_interface_props['org.ofono.Modem']['Serial'].value if 'Serial' in self.ofono_interface_props['org.ofono.Modem'] else '')
+        self.props['HardwareRevision'] = Variant('s', self.ofono_interface_props['org.ofono.Modem']['Revision'].value if 'Revision' in self.ofono_interface_props['org.ofono.Modem'] else '')
+        self.props['Revision'] = Variant('s', self.ofono_interface_props['org.ofono.Modem']['SoftwareVersionNumber'].value if 'SoftwareVersionNumber' in self.ofono_interface_props['org.ofono.Modem'] else '')
+        self.props['Manufacturer'] = Variant('s', self.ofono_interface_props['org.ofono.Modem']['Manufacturer'].value if 'Manufacturer' in self.ofono_interface_props['org.ofono.Modem'] else 'ofono')
+        self.props['Model'] = Variant('s', self.ofono_interface_props['org.ofono.Modem']['Model'].value if 'Model' in self.ofono_interface_props['org.ofono.Modem'] else 'binder')
 
         if old_state != self.props['State'].value:
             self.StateChanged(old_state, self.props['State'].value, 0)
@@ -911,7 +910,7 @@ class MMModemInterface(ServiceInterface):
                     return
 
         ofono2mm_print(f"Creating bearer {bearer_i} with properties: {properties}", self.verbose)
-        mm_bearer_interface = MMBearerInterface(self.ofono_client, self.modem_name, self.ofono_props, self.ofono_interfaces, self.ofono_interface_props, self, self.verbose)
+        mm_bearer_interface = MMBearerInterface(self.ofono_client, self.modem_name, self.ofono_interfaces, self.ofono_interface_props, self, self.verbose)
         self.mm_bearer_interfaces.append(mm_bearer_interface)
         mm_bearer_interface.props.update({
             "Properties": Variant('a{sv}', properties)
