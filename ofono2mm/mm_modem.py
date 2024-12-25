@@ -1054,6 +1054,7 @@ class MMModemInterface(ServiceInterface):
     def SetCurrentCapabilities(self, capabilities: 'u'):
         ofono2mm_print(f"Setting current capabilities to {capabilities}", self.verbose)
         self.props['CurrentCapabilities'] = Variant('u', capabilities)
+        self.emit_properties_changed({'CurrentCapabilities': self.props['CurrentCapabilities'].value})
 
     @method()
     async def SetCurrentModes(self, modes: '(uu)'):
@@ -1084,10 +1085,11 @@ class MMModemInterface(ServiceInterface):
             if read_setting('current_mode').strip() != str(modes):
                 ofono2mm_print(f"Saving selected current mode {modes}", self.verbose)
                 save_setting('current_mode', str(modes))
+
+            self.props['CurrentModes'] = Variant('(uu)', modes)
+            self.emit_properties_changed({'CurrentModes': self.props['CurrentModes'].value})
         else:
             raise DBusError('org.freedesktop.ModemManager1.Error.Core.Unsupported', f'The given combination of allowed and preferred modes is not supported')
-
-        await self.set_props()
 
     @method()
     def SetCurrentBands(self, bands: 'au'):
@@ -1098,6 +1100,7 @@ class MMModemInterface(ServiceInterface):
     def SetPrimarySimSlot(self, sim_slot: 'u'):
         ofono2mm_print(f"Setting primary sim slot to {sim_slot}", self.verbose)
         self.props['PrimarySimSlot'] = Variant('u', sim_slot)
+        self.emit_properties_changed({'PrimarySimSlot': self.props['PrimarySimSlot'].value})
 
     @method()
     def GetCellInfo(self) -> 'aa{sv}':
