@@ -108,7 +108,7 @@ class MMModemLocationInterface(ServiceInterface):
         ofono2mm_print("Returning current location", self.verbose)
 
         try:
-            latitude, longitude, altitude = await async_geoclue_get_location()
+            latitude, longitude, altitude = await self.async_geoclue_get_location()
         except Exception as e:
             ofono2mm_print(f"Failed to get location from geoclue: {e}", self.verbose)
             longitude = 0
