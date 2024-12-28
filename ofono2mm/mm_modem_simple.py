@@ -347,7 +347,7 @@ class MMModemSimpleInterface(ServiceInterface):
             props.Set('org.freedesktop.NetworkManager', 'WwanEnabled', True)
 
             ofono2mm_print("WWAN radio enabled successfully", self.verbose)
-        except dbus.exceptions.DBusException as e:
+        except Exception as e:
             ofono2mm_print(f"Failed to enable WWAN radio: {e}", self.verbose)
             return False
         return True
