@@ -1,3 +1,5 @@
+import multiprocessing
+from functools import partial
 from datetime import datetime
 from os import seteuid, getuid, chown, makedirs
 from os.path import join
@@ -16,49 +18,109 @@ from ofono2mm.logging import ofono2mm_print
 simple = None
 main_loop = None
 location_data = None
+verbose = False
 
 def on_simple_ready(source_object, result, user_data):
-    global simple, main_loop, location_data
-    simple = Geoclue.Simple.new_with_thresholds_finish(result)
+    global simple, main_loop, location_data, verbose
+    ofono2mm_print("Geoclue got location", verbose)
 
-    location = simple.get_location()
-    longitude = location.get_property('longitude')
-    latitude = location.get_property('latitude')
-    altitude = location.get_property('altitude')
+    try:
+        simple = Geoclue.Simple.new_with_thresholds_finish(result)
+        if not simple:
+            location_data = None
+            if main_loop:
+                main_loop.quit()
+            return
 
-    location_data = (latitude, longitude, altitude)
+        location = simple.get_location()
+        longitude = location.get_property('longitude')
+        latitude = location.get_property('latitude')
+        altitude = location.get_property('altitude')
 
-    if main_loop:
-        main_loop.quit()
-
-def geoclue_get_location():
-    global simple, main_loop, location_data
-
-    def on_timeout(user_data):
-        global simple, main_loop
-        if simple:
-            simple = None
+        location_data = (latitude, longitude, altitude)
+    except Exception as e:
+        location_data = None
+    finally:
         if main_loop:
             main_loop.quit()
-        return False
+
+def on_timeout(user_data):
+    global simple, main_loop, location_data, verbose
+    ofono2mm_print("Geoclue timeout reached", verbose)
+
+    try:
+        if simple:
+            try:
+                client = simple.get_client()
+                if client:
+                    client.stop()
+                    client.set_property('active', False)
+                    client = None
+            except Exception as e:
+                ofono2mm_print(f"Failed to stop geoclue client: {e}", verbose)
+            simple = None
+        location_data = None
+    finally:
+        if main_loop and main_loop.is_running():
+            GLib.idle_add(main_loop.quit)
+    return False
+
+def _geoclue_process_func(queue):
+    global simple, main_loop, location_data, verbose
 
     seteuid(32011)
+    try:
+        timeout_id = GLib.timeout_add_seconds(30, on_timeout, None)
 
-    GLib.timeout_add_seconds(30, on_timeout, None)
+        Geoclue.Simple.new_with_thresholds("ModemManager",
+                                           Geoclue.AccuracyLevel.EXACT,
+                                           0, 0, None, on_simple_ready, None)
 
-    Geoclue.Simple.new_with_thresholds("ModemManager", Geoclue.AccuracyLevel.EXACT, 0, 0, None, on_simple_ready, None)
+        main_loop = GLib.MainLoop()
+        main_loop.run()
 
-    main_loop = GLib.MainLoop()
-    main_loop.run()
+        if simple:
+            try:
+                client = simple.get_client()
+                if client:
+                    client.stop()
+                    client.set_property('active', False)
+                    client = None
+            except Exception as e:
+                ofono2mm_print(f"Failed to stop geoclue client: {e}", verbose)
+            simple = None
 
-    if getuid() == 0:
-        seteuid(0)
+        if location_data:
+            queue.put(('result', location_data))
+        else:
+            queue.put(('error', "Failed to get location data."))
+    except Exception as e:
+        queue.put(('error', str(e)))
+    finally:
+        if getuid() == 0:
+            seteuid(0)
 
-    if location_data:
-        latitude, longitude, altitude = location_data
-        return latitude, longitude, altitude
-    else:
-        raise Exception("Failed to get location data.")
+async def async_geoclue_get_location():
+    queue = multiprocessing.Queue()
+
+    process = multiprocessing.Process(target=_geoclue_process_func, args=(queue,))
+    process.start()
+
+    while process.is_alive():
+        await asyncio.sleep(0.1)
+
+    try:
+        status, data = queue.get_nowait()
+        if status == 'error':
+            raise Exception(data)
+        return data
+    except multiprocessing.queues.Empty:
+        raise Exception("No result received from Geoclue process")
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join()
+        queue.close()
 
 class MMModemLocationInterface(ServiceInterface):
     def __init__(self, modem_name, verbose=False):
@@ -91,10 +153,6 @@ class MMModemLocationInterface(ServiceInterface):
             'GpsRefreshRate': Variant('u', 0)
         }
 
-    async def async_geoclue_get_location(self):
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, geoclue_get_location)
-
     @method()
     def Setup(self, sources: 'u', signal_location: 'b') -> None:
         ofono2mm_print(f"Setup location with source flag {sources} and signal location {signal_location}", self.verbose)
@@ -107,8 +165,11 @@ class MMModemLocationInterface(ServiceInterface):
     async def GetLocation(self) -> 'a{uv}':
         ofono2mm_print("Returning current location", self.verbose)
 
+        global verbose
+        verbose = self.verbose
+
         try:
-            latitude, longitude, altitude = await self.async_geoclue_get_location()
+            latitude, longitude, altitude = await async_geoclue_get_location()
         except Exception as e:
             ofono2mm_print(f"Failed to get location from geoclue: {e}", self.verbose)
             longitude = 0
