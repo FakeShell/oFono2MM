@@ -570,8 +570,27 @@ class MMModemInterface(ServiceInterface):
 
     async def sim_unlocked(self):
         ofono2mm_print("SIM is now unlocked, exporting all interfaces again", self.verbose)
+
+        self.loop.create_task(self.init_connection_manager())
+
+        promises = []
         for iface in self.used_interfaces:
-            await self.add_ofono_interface(iface)
+            promises.append(self.add_ofono_interface(iface))
+
+        await asyncio.gather(*promises)
+
+        # Release and request the name so other apps realize we're here.
+        # TODO: this feels like it shouldn't be necessary. We are signaling InterfacesAdded, so... why?
+
+        try:
+            await self.bus.release_name('org.freedesktop.ModemManager1')
+        except Exception as e:
+            ofono2mm_print(f"Failed to release name: {e}", self.verbose)
+
+        try:
+            await self.bus.request_name('org.freedesktop.ModemManager1')
+        except Exception as e:
+            ofono2mm_print(f"Failed to request name: {e}", self.verbose)
 
     async def set_props(self):
         ofono2mm_print("Setting properties", self.verbose)
@@ -632,8 +651,8 @@ class MMModemInterface(ServiceInterface):
 
             lock_state = self.props['UnlockRequired'].value > 1
             if self.locked == True and self.locked != lock_state:
-                await self.sim_unlocked()
                 self.locked = False
+                await self.sim_unlocked()
         else:
             self.was_powered = False
             self.props['State'] = Variant('i', 3) # modem is disabled MM_MODEM_STATE_DISABLED
