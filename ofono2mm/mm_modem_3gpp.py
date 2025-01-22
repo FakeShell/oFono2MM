@@ -44,18 +44,28 @@ class MMModem3gppInterface(ServiceInterface):
 
         old_props = self.props.copy()
 
+        if 'org.ofono.SimManager' in self.ofono_interface_props and 'Present' in self.ofono_interface_props['org.ofono.SimManager'].props:
+            if not self.ofono_interface_props['org.ofono.SimManager']['Present'].value:
+                ofono2mm_print("SIM is not present. no need to set 3gpp props", self.verbose)
+                return
+        else:
+            ofono2mm_print("SIM manager is not up yet. cannot set 3gpp props", self.verbose)
+            return
+
+        if not (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none'):
+            ofono2mm_print("SIM is still locked and/or not ready. cannot set 3gpp props", self.verbose)
+            return
+
         if 'org.ofono.NetworkRegistration' in self.ofono_interface_props:
             self.props['OperatorName'] = Variant('s', self.ofono_interface_props['org.ofono.NetworkRegistration']['Name'].value if "Name" in self.ofono_interface_props['org.ofono.NetworkRegistration'] else '')
 
+            MCC = ''
             if 'MobileCountryCode' in self.ofono_interface_props['org.ofono.NetworkRegistration']:
                 MCC = self.ofono_interface_props['org.ofono.NetworkRegistration']['MobileCountryCode'].value
-            else:
-                MCC = ''
 
+            MNC = ''
             if 'MobileNetworkCode' in self.ofono_interface_props['org.ofono.NetworkRegistration']:
                 MNC = self.ofono_interface_props['org.ofono.NetworkRegistration']['MobileNetworkCode'].value
-            else:
-                MNC = ''
 
             self.props['OperatorCode'] = Variant('s', f'{MCC}{MNC}')
             if 'Status' in self.ofono_interface_props['org.ofono.NetworkRegistration']:
@@ -87,27 +97,25 @@ class MMModem3gppInterface(ServiceInterface):
         self.props['Imei'] = Variant('s', self.ofono_interface_props['org.ofono.Modem']['Serial'].value if 'Serial' in self.ofono_interface_props['org.ofono.Modem'] else '')
         self.props['EnabledFacilityLocks'] = Variant('u', 0) # none MM_MODEM_3GPP_FACILITY_NONE
 
-        if ("Present" in self.ofono_interface_props['org.ofono.SimManager'] and self.ofono_interface_props['org.ofono.SimManager']['Present'].value == 1) \
-            and (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none'):
-            try:
-                contexts = await self.ofono_interfaces['org.ofono.ConnectionManager'].call_get_contexts()
-                for ctx in contexts:
-                    ctx_type = ctx[1].get('Type', Variant('s', '')).value
-                    if ctx_type.lower() == "internet":
-                        apn = ctx[1].get('AccessPointName', Variant('s', '')).value
-                        auth_method = ctx[1].get('AuthenticationMethod', Variant('s', '')).value
+        try:
+            contexts = await self.ofono_interfaces['org.ofono.ConnectionManager'].call_get_contexts()
+            for ctx in contexts:
+                ctx_type = ctx[1].get('Type', Variant('s', '')).value
+                if ctx_type.lower() == "internet":
+                    apn = ctx[1].get('AccessPointName', Variant('s', '')).value
+                    auth_method = ctx[1].get('AuthenticationMethod', Variant('s', '')).value
 
-                        self.props['InitialEpsBearerSettings'].value['apn'] = Variant('s', f'{apn}')
-                        if auth_method == 'none':
-                            self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 1) # none MM_BEARER_ALLOWED_AUTH_NONE
-                        elif auth_method == 'pap':
-                            self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 2) # pap MM_BEARER_ALLOWED_AUTH_PAP
-                        elif auth_method == 'chap':
-                            self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 3) # chap MM_BEARER_ALLOWED_AUTH_CHAP
-                        else:
-                           self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 0) # unknown MM_BEARER_ALLOWED_AUTH_UNKNOWN
-            except Exception as e:
-                ofono2mm_print(f"Failed to set eps bearer settings: {e}", self.verbose)
+                    self.props['InitialEpsBearerSettings'].value['apn'] = Variant('s', f'{apn}')
+                    if auth_method == 'none':
+                        self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 1) # none MM_BEARER_ALLOWED_AUTH_NONE
+                    elif auth_method == 'pap':
+                        self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 2) # pap MM_BEARER_ALLOWED_AUTH_PAP
+                    elif auth_method == 'chap':
+                        self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 3) # chap MM_BEARER_ALLOWED_AUTH_CHAP
+                    else:
+                       self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 0) # unknown MM_BEARER_ALLOWED_AUTH_UNKNOWN
+        except Exception as e:
+            ofono2mm_print(f"Failed to set eps bearer settings: {e}", self.verbose)
 
         changed_props = {}
         for prop in self.props:
