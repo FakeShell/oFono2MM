@@ -226,8 +226,16 @@ class MMModemSimpleInterface(ServiceInterface):
     async def network_manager_set_apn(self, force=False):
         ofono2mm_print("Generating Network Manager connection", self.verbose)
 
-        if not (("Present" in self.ofono_interface_props['org.ofono.SimManager'] and self.ofono_interface_props['org.ofono.SimManager']['Present'].value == 1) \
-            and (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none')):
+        if 'org.ofono.SimManager' in self.ofono_interface_props and 'Present' in self.ofono_interface_props['org.ofono.SimManager'].props:
+            if not self.ofono_interface_props['org.ofono.SimManager']['Present'].value:
+                ofono2mm_print("SIM is not present. no need to set APN", self.verbose)
+                return True
+        else:
+            ofono2mm_print("SIM manager is not up yet", self.verbose)
+            await asyncio.sleep(3)
+            return False
+
+        if not (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none'):
             ofono2mm_print("SIM is still locked and/or not ready", self.verbose)
             await asyncio.sleep(3)
             return False
