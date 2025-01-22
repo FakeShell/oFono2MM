@@ -42,18 +42,28 @@ class MMModemSimpleInterface(ServiceInterface):
 
         old_props = self.props
 
+        if 'org.ofono.SimManager' in self.ofono_interface_props and 'Present' in self.ofono_interface_props['org.ofono.SimManager'].props:
+            if not self.ofono_interface_props['org.ofono.SimManager']['Present'].value:
+                ofono2mm_print("SIM is not present. no need to set simple props", self.verbose)
+                return
+        else:
+            ofono2mm_print("SIM manager is not up yet. cannot set simple props", self.verbose)
+            return
+
+        if not (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none'):
+            ofono2mm_print("SIM is still locked and/or not ready. cannot set simple props", self.verbose)
+            return
+
         if 'org.ofono.NetworkRegistration' in self.ofono_interface_props:
             self.props['m3gpp-operator-name'] = Variant('s', self.ofono_interface_props['org.ofono.NetworkRegistration']['Name'].value if "Name" in self.ofono_interface_props['org.ofono.NetworkRegistration'] else '')
 
+            MCC = ''
             if 'MobileCountryCode' in self.ofono_interface_props['org.ofono.NetworkRegistration']:
                 MCC = self.ofono_interface_props['org.ofono.NetworkRegistration']['MobileCountryCode'].value
-            else:
-                MCC = ''
 
+            MNC = ''
             if 'MobileNetworkCode' in self.ofono_interface_props['org.ofono.NetworkRegistration']:
                 MNC = self.ofono_interface_props['org.ofono.NetworkRegistration']['MobileNetworkCode'].value
-            else:
-                MNC = ''
 
             self.props['m3gpp-operator-code'] = Variant('s', f'{MCC}{MNC}')
 
