@@ -412,6 +412,18 @@ class MMModemInterface(ServiceInterface):
     async def check_ofono_contexts(self):
         ofono2mm_print("Checking ofono contexts", self.verbose)
 
+        if 'org.ofono.SimManager' in self.ofono_interface_props and 'Present' in self.ofono_interface_props['org.ofono.SimManager'].props:
+            if not self.ofono_interface_props['org.ofono.SimManager']['Present'].value:
+                ofono2mm_print("SIM is not present. no need to check ofono contexts", self.verbose)
+                return
+        else:
+            ofono2mm_print("SIM manager is not up yet. cannot check ofono contexts", self.verbose)
+            return
+
+        if not (not 'PinRequired' in self.ofono_interface_props['org.ofono.SimManager'] or self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none'):
+            ofono2mm_print("SIM is still locked and/or not ready. cannot check ofono contexts", self.verbose)
+            return
+
         global bearer_i
 
         # ConnectionManager and get_contexts can take a bit to come up, so...
