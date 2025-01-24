@@ -113,7 +113,7 @@ class MMModem3gppInterface(ServiceInterface):
                     elif auth_method == 'chap':
                         self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 3) # chap MM_BEARER_ALLOWED_AUTH_CHAP
                     else:
-                       self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 0) # unknown MM_BEARER_ALLOWED_AUTH_UNKNOWN
+                        self.props['InitialEpsBearerSettings'].value['allowed-auth'] = Variant('u', 0) # unknown MM_BEARER_ALLOWED_AUTH_UNKNOWN
         except Exception as e:
             ofono2mm_print(f"Failed to set eps bearer settings: {e}", self.verbose)
 
