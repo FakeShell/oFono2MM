@@ -1,6 +1,7 @@
 PREFIX ?= /usr
 LIBDIR ?= $(PREFIX)/lib
 BINDIR ?= $(PREFIX)/bin
+BINDIR ?= $(PREFIX)/sbin
 SYSTEMD_DIR = /usr/lib/systemd/system
 POLKIT_DIR = /etc/polkit-1/localauthority/10-vendor.d
 
@@ -21,7 +22,7 @@ install:
 	install -d $(LIBDIR)/ofono2mm
 
 	install -m 755 $(MAIN) $(LIBDIR)/ofono2mm/
-	ln -sf $(LIBDIR)/ofono2mm/$(MAIN) $(BINDIR)/ofono2mm
+	ln -sf $(LIBDIR)/ofono2mm/$(MAIN) $(SBINDIR)/ofono2mm
 
 	cp -r $(OFONO2MM_DIR) $(LIBDIR)/ofono2mm/
 
@@ -42,7 +43,7 @@ endif
 
 uninstall:
 	rm -rf $(LIBDIR)/ofono2mm/
-	rm -f $(BINDIR)/ofono2mm
+	rm -f $(SBINDIR)/ofono2mm
 	rm -f $(BINDIR)/ofonoctl
 	rm -f $(SYSDIR)/ModemManager.service.d/10-ofono2mm.conf
 	rm -f $(POLKIT_DIR)/ofono2mm-radio.pkla
